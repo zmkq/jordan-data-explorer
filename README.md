@@ -1,73 +1,134 @@
-# React + TypeScript + Vite
+# Jordan Data Explorer (JODE)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Jordan Data Explorer is an open-source web app for exploring Jordan-focused macroeconomic, demographic, technology, infrastructure, and environmental indicators.
 
-Currently, two official plugins are available:
+It combines historical data from global providers with local proxy datasets where useful, then visualizes trends with optional forward projections.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Why This Project Exists
 
-## React Compiler
+Public data is often fragmented across sources, formats, and update cycles. JODE provides:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- a single interface for key Jordan indicators
+- consistent charting and comparison views
+- transparent methodology for projections and source blending
 
-## Expanding the ESLint configuration
+## Core Features
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **Interactive data catalog** for 12 curated indicators
+- **Dataset detail pages** with dynamic line charts
+- **Live CSV ingestion** from Our World in Data (OWID) using PapaParse
+- **Projection engine** using Ordinary Least Squares (OLS) linear regression
+- **Recent focus mode** to zoom on the latest trend window
+- **Multi-series support** for specific datasets (for example, internet and CO2)
+- **Responsive UI** built with React, Tailwind CSS, and Recharts
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Included Datasets
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+Current catalog includes:
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- Internet Penetration
+- Life Expectancy
+- CO2 Emissions
+- Population Growth
+- GDP per Capita
+- Electricity Access
+- Fertility Rate
+- Urban Population
+- Renewable Energy
+- Child Mortality
+- Literacy Rate
+- Mobile Subscriptions
+
+## Tech Stack
+
+- **Frontend:** React 19 + TypeScript
+- **Build Tool:** Vite
+- **Routing:** React Router
+- **Charts:** Recharts
+- **Data Parsing:** PapaParse
+- **Styling:** Tailwind CSS
+- **Linting:** ESLint
+
+## Getting Started
+
+### 1) Clone
+
+```bash
+git clone https://github.com/i-love-c00kies/jordan-data-explorer.git
+cd jordan-data-explorer
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 2) Install dependencies
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
+
+### 3) Run locally
+
+```bash
+npm run dev
+```
+
+Then open the local URL shown by Vite (usually `http://localhost:5173`).
+
+## Available Scripts
+
+- `npm run dev` - start development server
+- `npm run build` - type-check and build production bundle
+- `npm run preview` - preview the production build locally
+- `npm run lint` - run ESLint checks
+
+## Project Structure
+
+```text
+src/
+  components/
+    Footer.tsx
+  pages/
+    Home.tsx
+    Datasets.tsx
+    DatasetView.tsx
+  App.tsx
+```
+
+- `Home.tsx` introduces the project and methodology.
+- `Datasets.tsx` provides the catalog and dataset navigation.
+- `DatasetView.tsx` handles live data fetch, transformation, and chart rendering.
+
+## Data and Methodology
+
+### Data pipeline
+
+1. Fetch indicator CSV from OWID grapher endpoints.
+2. Filter to rows where `Entity === "Jordan"`.
+3. Normalize values and apply dataset-specific shaping rules.
+4. Render in a multi-line chart with responsive controls.
+
+### Projections
+
+Forward estimates are generated with OLS linear regression using a recent historical window. Projections are intended as directional signals, not official forecasts.
+
+### Source blending
+
+For selected indicators, local proxy data is layered with global historical series to better represent current realities while preserving long-term trend continuity.
+
+## Contributing
+
+Contributions are welcome.
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit clear, focused changes
+4. Open a pull request with context and screenshots (if UI changes)
+
+## Data Source References
+
+- [Our World in Data](https://ourworldindata.org/)
+- [World Bank Open Data](https://data.worldbank.org/)
+- [UN Population Division](https://population.un.org/)
+- [Telecom Regulatory Commission - Jordan](https://trc.gov.jo/)
+
+## License and Attribution
+
+Code is open source under the repository's license terms. Data remains subject to each upstream provider's license and usage policies.

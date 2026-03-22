@@ -5,9 +5,10 @@ import Navbar from './components/Navbar';
 import { ThemeProvider } from './context/ThemeContext';
 
 // 1. Lazy load the pages
-const Home = lazy(() => import('./pages/Home'));
-const Datasets = lazy(() => import('./pages/Datasets'));
-const DatasetView = lazy(() => import('./pages/DatasetView'));
+const Home = lazy(() => import('./pages/Home.tsx'));
+const Datasets = lazy(() => import('./pages/Datasets.tsx'));
+const DatasetView = lazy(() => import('./pages/DatasetView.tsx'));
+const CompareView = lazy(() => import('./pages/CompareView.tsx'));
 
 // 2. Create a simple loading spinner for the transitions
 const PageLoader = () => (
@@ -29,6 +30,7 @@ export default function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/datasets" element={<Datasets />} />
                 <Route path="/datasets/:id" element={<DatasetView />} />
+                <Route path="/compare" element={<CompareView />} />
               </Routes>
             </div>
           </Suspense>

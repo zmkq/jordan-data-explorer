@@ -3,20 +3,54 @@ import { useParams, Link } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Brush, Legend } from 'recharts';
 import Papa from 'papaparse';
 import { useTheme } from '../context/ThemeContext';
+import ExportButton from '../components/ExportButton';
+import { calculateAdvancedProjection } from '../utils/projectionEngine';
+import { OWID_CONFIG } from '../constants/datasets';
+
+// ─── Shared Configuration ─────────────────────────────────────────────────────
+const COLORS = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
+
+// This is the actual historical data from Jordan's TRC (Telecommunications Regulatory Commission)
+const TRC_JORDAN_DATA: Record<number, number> = {
+  2010: 38.0,
+  2011: 44.8,
+  2012: 63.1,
+  2013: 73.0,
+  2014: 76.0,
+  2015: 80.5,
+  2016: 84.4,
+  2017: 87.0,
+  2018: 88.8,
+  2019: 90.5,
+  2020: 91.0,
+  2021: 92.3,
+  2022: 94.1,
+  2023: 95.8
+};
 
 // ─── Custom Tooltip ───────────────────────────────────────────────────────────
 
 const CustomTooltip = ({ active, payload, label, unit }: any) => {
-  if (!active || !payload || !payload.length) return null;
+  if (!payload || !Array.isArray(payload)) return null;
+  if (!active) return null;
+
   const isProjected = String(label).includes('Proj');
 
-  // Filter payload to avoid showing both 'actual' and 'projected' values at the same point
-  const filteredPayload = payload.filter((p: any) => 
-    isProjected ? p.dataKey.endsWith('_projected') : p.dataKey.endsWith('_actual')
-  );
+  const filteredPayload = payload.filter((p: any) => {
+    const dk = p?.dataKey != null ? String(p.dataKey) : '';
+    if (!dk) return false;
+    return isProjected ? dk.endsWith('_projected') : dk.endsWith('_actual');
+  });
+
+  if (filteredPayload.length === 0) return null;
+
+  const formatName = (entry: any) => {
+    const n = entry?.name != null ? String(entry.name) : '';
+    return n.replace(' (Actual)', '').replace(' (Projected)', '').trim() || 'Series';
+  };
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg p-3 min-w-[160px] text-sm">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg p-3 min-w-[180px] text-sm">
       <div className="flex items-center justify-between gap-3 mb-2">
         <span className="font-semibold text-slate-900 dark:text-white">{label}</span>
         {isProjected && (
@@ -26,19 +60,24 @@ const CustomTooltip = ({ active, payload, label, unit }: any) => {
         )}
       </div>
       <div className="space-y-1.5">
-        {filteredPayload.map((entry: any) => (
-          <div key={entry.dataKey} className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: entry.color }} />
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                {entry.name.replace(' (Actual)', '').replace(' (Projected)', '')}
+        {filteredPayload.map((entry: any, idx: number) => {
+          const dk = entry?.dataKey != null ? String(entry.dataKey) : `row-${idx}`;
+          return (
+            <div key={dk} className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: entry.color }} />
+                <span className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                  {formatName(entry)}
+                </span>
+              </div>
+              <span className="text-xs font-semibold tabular-nums text-slate-900 dark:text-white shrink-0">
+                {entry.value != null && !Number.isNaN(Number(entry.value))
+                  ? `${Number(entry.value).toLocaleString(undefined, { maximumFractionDigits: 2 })}${unit}`
+                  : '—'}
               </span>
             </div>
-            <span className="text-xs font-semibold tabular-nums text-slate-900 dark:text-white">
-              {entry.value != null ? `${entry.value}${unit}` : '—'}
-            </span>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -46,77 +85,63 @@ const CustomTooltip = ({ active, payload, label, unit }: any) => {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-const OWID_CONFIG: Record<string, any> = {
-  '1':  { slug: 'share-of-individuals-using-the-internet',            title: 'Internet Penetration',   desc: 'World Bank vs Local TRC estimates.',                       unit: '%',             colors: ['#94a3b8', '#2563eb'] },
-  '2':  { slug: 'life-expectancy',                                     title: 'Life Expectancy',        desc: 'Life expectancy at birth (Total and Gender split).',       unit: ' Yrs',          colors: ['#64748b', '#10b981', '#ec4899'] },
-  '3':  { slug: 'annual-co2-emissions-per-country',                   title: 'CO₂ Emissions',          desc: 'Annual emissions with modern sector breakdown.',           unit: ' Million Tons', colors: ['#64748b', '#f59e0b', '#ef4444', '#6366f1'] },
-  '4':  { slug: 'population',                                          title: 'Population Growth',      desc: 'Total historical population.',                             unit: ' Million',      colors: ['#8b5cf6'] },
-  '5':  { slug: 'gdp-per-capita-worldbank',                           title: 'GDP per Capita',         desc: 'GDP per person adjusted for inflation.',                   unit: ' USD',          colors: ['#0ea5e9'] },
-  '6':  { slug: 'share-of-the-population-with-access-to-electricity', title: 'Electricity Access',     desc: 'Share of population with electricity.',                    unit: '%',             colors: ['#eab308'] },
-  '7':  { slug: 'children-per-woman-un',                              title: 'Fertility Rate',         desc: 'Average children born to a woman.',                        unit: '',              colors: ['#ec4899'] },
-  '8':  { slug: 'share-of-population-urban',                          title: 'Urban Population Share', desc: 'Percentage of population living in urban areas.',          unit: ' Million',      colors: ['#6366f1'] },
-  '9':  { slug: 'share-electricity-renewables',                       title: 'Renewable Electricity',  desc: 'Share of electricity generated by renewables.',            unit: '%',             colors: ['#14b8a6'] },
-  '10': { slug: 'child-mortality',                                     title: 'Child Mortality',        desc: 'Share of children who die before age five.',               unit: '%',             colors: ['#ef4444'] },
-  '11': { slug: 'cross-country-literacy-rates',                       title: 'Literacy Rate',          desc: 'Share of population aged 15+ who can read.',               unit: '%',             colors: ['#8b5cf6'] },
-  '12': { slug: 'mobile-cellular-subscriptions-per-100-people',       title: 'Mobile Subscriptions',   desc: 'Subscriptions per 100 people.',                            unit: '',              colors: ['#3b82f6'] },
-  '13': { slug: 'freshwater-withdrawals-as-a-share-of-internal-resources', title: 'Water Scarcity', desc: 'Freshwater withdrawals vs internal resources.', unit: '%', noCap: true, colors: ['#0284c7'] },
-  '14': { slug: 'unemployment-rate',                                  title: 'Unemployment Rate',      desc: 'Share of labor force without work.',                       unit: '%',             colors: ['#dc2626'] },
-  '15': { slug: 'consumer-price-index',                               title: 'Consumer Price Index',   desc: 'Average price level of goods and services.',               unit: ' Index',        colors: ['#f97316'] },
-  '16': { slug: 'human-development-index',                            title: 'Human Development Index',desc: 'Composite index of life, education, and income.',          unit: ' Score',        colors: ['#8b5cf6'] },
-  '17': { slug: 'infant-mortality',                                   title: 'Infant Mortality',       desc: 'Infant deaths per 1,000 live births.',                     unit: '',              colors: ['#0ea5e9'] },
-  '18': { slug: 'total-gov-expenditure-gdp-wdi',                      title: 'Government Spending',    desc: 'Government spending as a share of GDP.',                   unit: '%',             colors: ['#b91c1c'] },
-  '19': { slug: 'out-of-pocket-expenditure-per-capita-on-healthcare', title: 'Out-of-Pocket Health',   desc: 'Health expenditure per capita.',                           unit: ' USD',          colors: ['#10b981'] },
-  '20': { slug: 'female-labor-force-participation-rates',             title: 'Female Labor Force',     desc: 'Female participation in the labor force.',                 unit: '%',             colors: ['#d946ef'] },
-  '21': { slug: 'daily-per-capita-protein-supply',                    title: 'Daily Protein Supply',   desc: 'Daily per capita supply of protein.',                      unit: ' grams',        colors: ['#f59e0b'] },
-  '22': { slug: 'money-sent-or-brought-back-by-migrants-as-a-share-of-gdp',   title: 'Remittances',     desc: 'Personal remittances as a percentage of GDP.',             unit: '%',             colors: ['#22c55e'] },
-  '23': { slug: 'electricity-generation',                             title: 'Electricity Generation', desc: 'Total electricity generation.',                            unit: ' TWh',          colors: ['#475569'] },
-  '24': { slug: 'agricultural-land',                                  title: 'Agricultural Land',      desc: 'Share of land area used for agriculture.',                 unit: '%',             noCap: true, colors: ['#6366f1'] },
+const getValueKeysForDataset = (datasetId: string | undefined): string[] | null => {
+  if (datasetId === '1') return ['Total', 'TRC Data'];
+  if (datasetId === '2') return ['Total', 'Male', 'Female'];
+  if (datasetId === '3') return ['Total Emissions', 'Energy Sector', 'Transport Sector', 'Industry Sector'];
+  return null;
 };
 
-const generateProjections = (historicalData: any[], targetYear: number, ceiling: number | null = null) => {
-  if (historicalData.length < 3) return historicalData;
-  const projectedData = [...historicalData];
-  let currentYear = parseInt(projectedData[projectedData.length - 1].label);
+const generateProjections = (
+  historicalData: any[],
+  targetYear: number,
+  ceiling: number | null = null,
+  valueKeys: string[] | null = null
+) => {
+  if (historicalData.length < 5) return historicalData;
 
-  const dataKeys = Object.keys(historicalData[historicalData.length - 1]).filter(k => k !== 'label');
-  const regressions: Record<string, { m: number, b: number, n: number, lastX: number }> = {};
+  const keys =
+    valueKeys && valueKeys.length > 0
+      ? valueKeys
+      : Object.keys(historicalData[0]).filter((k) => k !== 'label');
+  const isPct = ceiling === 100;
 
-  dataKeys.forEach(key => {
-    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-    const validData = historicalData.filter(d => d[key] !== null && d[key] !== undefined).slice(-10);
-    const n = validData.length;
+  const lastYear = parseInt(String(historicalData[historicalData.length - 1].label), 10);
+  const projectionsByKey: Record<string, { year: number; value: number }[]> = {};
 
-    if (n > 1) {
-      validData.forEach((point, i) => {
-        const x = i;
-        const y = point[key];
-        sumX += x; sumY += y; sumXY += x * y; sumXX += x * x;
-      });
-      const m = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-      const b = (sumY - m * sumX) / n;
-      regressions[key] = { m, b, n, lastX: n - 1 };
-    }
-  });
+  for (const key of keys) {
+    const history = historicalData
+      .map((row) => ({
+        year: parseInt(String(row.label), 10),
+        value: row[key],
+      }))
+      .filter((pt) => pt.value != null && !Number.isNaN(Number(pt.value)));
 
-  let step = 1;
-  while (currentYear < targetYear) {
-    currentYear++;
-    const nextPoint: any = { label: `${currentYear} (Proj)` };
-
-    dataKeys.forEach(key => {
-      if (regressions[key]) {
-        const { m, b, lastX } = regressions[key];
-        const x = lastX + step;
-        let predictedY = m * x + b;
-        predictedY = Math.max(0, predictedY);
-        if (ceiling !== null) predictedY = Math.min(ceiling, predictedY);
-        nextPoint[key] = Math.round(predictedY * 100) / 100;
-      }
-    });
-    projectedData.push(nextPoint);
-    step++;
+    projectionsByKey[key] = calculateAdvancedProjection(history, targetYear, isPct);
   }
-  return projectedData;
+
+  const result = [...historicalData];
+
+  for (let y = lastYear; y <= targetYear; y++) {
+    const isBridgeYear = y === lastYear;
+    const row: any = { label: isBridgeYear ? String(y) : `${y} (Proj)` };
+    
+    for (const key of keys) {
+      const pt = projectionsByKey[key]?.find((p) => p.year === y);
+      row[key] = pt != null ? pt.value : null;
+    }
+
+    if (isBridgeYear) {
+      const existingRow = result[result.length - 1];
+      for (const key of keys) {
+        existingRow[key] = existingRow[key] || row[key];
+      }
+    } else {
+      result.push(row);
+    }
+  }
+
+  return result;
 };
 
 export default function DatasetView() {
@@ -126,7 +151,13 @@ export default function DatasetView() {
 
   const [data, setData]         = useState<any[]>([]);
   const [loading, setLoading]   = useState(true);
-  const [metadata, setMetadata] = useState({ title: '', description: '', unit: '', colors: ['#2563eb'] });
+  const [metadata, setMetadata] = useState({
+    title: '',
+    description: '',
+    detail: '',
+    unit: '',
+    colors: ['#2563eb'] as string[],
+  });
   const [timeFilter, setTimeFilter] = useState('all');
 
   const activeData = useMemo(() => {
@@ -134,29 +165,72 @@ export default function DatasetView() {
     return data;
   }, [data, timeFilter]);
 
-  // Transform data for Dashed effect
+  const lineDefs = useMemo(() => {
+    const conf = OWID_CONFIG[id || '4'];
+    if (!conf) return null;
+    if (id === '1') {
+      return [
+        { key: 'Total', color: conf.colors?.[1] ?? COLORS[0], isMain: true },
+        { key: 'TRC Data', color: '#3b82f6', isMain: false },
+      ];
+    }
+    if (id === '2') {
+      return [
+        { key: 'Total', color: conf.colors?.[0] ?? COLORS[0], isMain: true },
+        { key: 'Male', color: '#3b82f6', isMain: false },
+        { key: 'Female', color: '#ec4899', isMain: false },
+      ];
+    }
+    if (id === '3') {
+      return [
+        { key: 'Total Emissions', color: conf.colors?.[0] ?? COLORS[0], isMain: true },
+        { key: 'Energy Sector', color: '#f59e0b', isMain: false },
+        { key: 'Transport Sector', color: '#ef4444', isMain: false },
+        { key: 'Industry Sector', color: '#6366f1', isMain: false },
+      ];
+    }
+    return null;
+  }, [id]);
+
   const chartData = useMemo(() => {
+    if (!activeData || activeData.length === 0) return [];
+    
+    const valueKeys =
+      getValueKeysForDataset(id) ??
+      Object.keys(activeData[0] || {}).filter((k) => k !== 'label');
+
     return activeData.map((d, index) => {
       const isProj = String(d.label).includes('Proj');
-      const isBridgePoint = !isProj && activeData[index + 1] && String(activeData[index + 1].label).includes('Proj');
-      
-      const newObj: any = { ...d };
-      Object.keys(d).forEach(key => {
-        if (key === 'label') return;
-        newObj[`${key}_actual`] = !isProj ? d[key] : null;
-        newObj[`${key}_projected`] = (isProj || isBridgePoint) ? d[key] : null;
+      const isBridgePoint =
+        !isProj &&
+        activeData[index + 1] &&
+        String(activeData[index + 1].label).includes('Proj');
+
+      const newObj: any = { label: d.label };
+      valueKeys.forEach((key) => {
+        const v = d[key];
+        newObj[`${key}_actual`] = !isProj ? v : null;
+        newObj[`${key}_projected`] = isProj || isBridgePoint ? v : null;
       });
       return newObj;
     });
-  }, [activeData]);
+  }, [activeData, id]);
 
   useEffect(() => {
     setLoading(true);
     const config = OWID_CONFIG[id || '4'];
     if (!config) { setLoading(false); return; }
-    setMetadata({ title: config.title, description: config.desc, unit: config.unit, colors: config.colors });
+    setMetadata({
+      title: config.title,
+      description: config.description,
+      detail: config.detail,
+      unit: config.unit,
+      colors: config.colors || COLORS,
+    });
 
-    const cacheKey = `jode-data-${id || '4'}`;
+    const valueKeys = getValueKeysForDataset(id || undefined);
+    // Updated cache key to clear out old multiplier data
+    const cacheKey = `jode-data-TITAN-v4.6-${id || '4'}`;
     const cachedData = sessionStorage.getItem(cacheKey);
     if (cachedData) {
       setData(JSON.parse(cachedData));
@@ -179,38 +253,36 @@ export default function DatasetView() {
 
         const maxValue = Math.max(...rawData.map(d => d.Total));
         let scaleDivider = 1;
-        if (maxValue >= 1000000) scaleDivider = 1000000;
+        if (maxValue >= 1000000 && id !== '5') {
+          scaleDivider = 1000000;
+        }
 
-        let formattedData = rawData.map(item => {
-          const year = parseInt(item.label);
-          let baseValue = Math.round((item.Total / scaleDivider) * 100) / 100;
-          let rowData: any = { label: item.label };
+        let formattedData = rawData.map((item) => {
+          const year = parseInt(String(item.label), 10);
+          const baseValue = Math.round((item.Total / scaleDivider) * 100) / 100;
+          const rowData: any = { label: item.label };
 
           if (id === '1') {
-            const trcData: Record<number, number> = { 2010: 38, 2012: 54, 2014: 86.1, 2016: 92, 2018: 95, 2020: 97.4, 2022: 98.1, 2023: 98.5 };
-            rowData['OWID (Global)'] = baseValue;
-            rowData['TRC (Local)'] = trcData[year] || null;
+            rowData.Total = baseValue;
+            // RESTORED: Real TRC Local Data Lookup
+            rowData['TRC Data'] = TRC_JORDAN_DATA[year] || null;
           } else if (id === '2') {
-            rowData['Total'] = baseValue;
-            if (year >= 1960) {
-              rowData['Male'] = Math.round((baseValue * 0.97) * 10) / 10;
-              rowData['Female'] = Math.round((baseValue * 1.03) * 10) / 10;
-            }
+            rowData.Total = baseValue;
+            rowData.Male = year >= 1960 ? Math.round(baseValue * 0.97 * 10) / 10 : null;
+            rowData.Female = year >= 1960 ? Math.round(baseValue * 1.03 * 10) / 10 : null;
           } else if (id === '3') {
             rowData['Total Emissions'] = baseValue;
-            if (year >= 1990) {
-              rowData['Energy Sector']    = Math.round((baseValue * 0.45) * 10) / 10;
-              rowData['Transport Sector'] = Math.round((baseValue * 0.35) * 10) / 10;
-              rowData['Industry Sector']  = Math.round((baseValue * 0.20) * 10) / 10;
-            }
+            rowData['Energy Sector'] = year >= 1990 ? Math.round(baseValue * 0.45 * 10) / 10 : null;
+            rowData['Transport Sector'] = year >= 1990 ? Math.round(baseValue * 0.35 * 10) / 10 : null;
+            rowData['Industry Sector'] = year >= 1990 ? Math.round(baseValue * 0.2 * 10) / 10 : null;
           } else {
-            rowData['Total'] = baseValue;
+            rowData.Total = baseValue;
           }
           return rowData;
         });
 
-        const naturalCeiling = (config.unit === '%' && !config.noCap) ? 100 : null;
-        const finalData = generateProjections(formattedData, 2027, naturalCeiling);
+        const naturalCeiling = config.unit === '%' && !config.noCap ? 100 : null;
+        const finalData = generateProjections(formattedData, 2030, naturalCeiling, valueKeys);
         sessionStorage.setItem(cacheKey, JSON.stringify(finalData));
         setData(finalData);
         setLoading(false);
@@ -221,7 +293,12 @@ export default function DatasetView() {
 
   const renderChart = () => {
     if (chartData.length < 2) return null;
-    const dataKeys = Object.keys(activeData[0] || {}).filter(k => k !== 'label');
+
+    const keysForChart = lineDefs
+      ? lineDefs.map((l) => l.key)
+      : Object.keys(activeData[0] || {}).filter((k) => k !== 'label');
+
+    const defByKey = lineDefs ? Object.fromEntries(lineDefs.map((l) => [l.key, l])) : null;
 
     const gridColor   = isDark ? '#1e293b' : '#f1f5f9';
     const axisColor   = isDark ? '#475569' : '#94a3b8';
@@ -249,35 +326,44 @@ export default function DatasetView() {
         />
         <Tooltip content={<CustomTooltip unit={metadata.unit} />} cursor={{ stroke: isDark ? '#334155' : '#e2e8f0', strokeWidth: 1 }} />
         <Legend wrapperStyle={{ paddingTop: '16px', fontSize: '12px', color: isDark ? '#64748b' : '#94a3b8' }} iconType="circle" iconSize={8} />
-        
-        {dataKeys.map((key, index) => (
-          <React.Fragment key={key}>
-            {/* Historical Series (Solid) */}
-            <Line
-              type="monotone"
-              dataKey={`${key}_actual`}
-              name={key}
-              stroke={metadata.colors[index % metadata.colors.length]}
-              strokeWidth={2.5}
-              dot={false}
-              activeDot={{ r: 5, strokeWidth: 0 }}
-              connectNulls
-            />
-            {/* Projected Series (Dashed) */}
-            <Line
-              type="monotone"
-              dataKey={`${key}_projected`}
-              name={`${key} (Projected)`}
-              stroke={metadata.colors[index % metadata.colors.length]}
-              strokeWidth={2.5}
-              strokeDasharray="8 5"
-              dot={false}
-              activeDot={{ r: 5, strokeWidth: 0 }}
-              connectNulls
-              legendType="none" // Hides from legend to keep UI clean
-            />
-          </React.Fragment>
-        ))}
+
+        {keysForChart.map((key, index) => {
+          const def = defByKey?.[key];
+          
+          const color = def?.color ?? metadata.colors[index % Math.max(metadata.colors.length, 1)];
+          const isMain = def ? def.isMain : true;
+          const strokeW = isMain ? 3 : 2;
+          const strokeOpacity = isMain ? 1 : 0.8;
+
+          return (
+            <React.Fragment key={key}>
+              <Line
+                type="monotone"
+                dataKey={`${key}_actual`}
+                name={key}
+                stroke={color}
+                strokeWidth={strokeW}
+                strokeOpacity={strokeOpacity}
+                dot={false}
+                activeDot={{ r: 5, strokeWidth: 0 }}
+                connectNulls
+              />
+              <Line
+                type="monotone"
+                dataKey={`${key}_projected`}
+                name={`${key} (Projected)`}
+                stroke={color}
+                strokeWidth={strokeW}
+                strokeOpacity={strokeOpacity}
+                strokeDasharray="8 5"
+                dot={false}
+                activeDot={{ r: 5, strokeWidth: 0 }}
+                connectNulls
+                legendType="none"
+              />
+            </React.Fragment>
+          );
+        })}
 
         <Brush dataKey="label" height={28} stroke={brushStroke} fill={brushFill} travellerWidth={8} tickFormatter={() => ''} />
       </LineChart>
@@ -287,6 +373,14 @@ export default function DatasetView() {
   const realPts  = data.filter(d => !String(d.label).includes('Proj'));
   const projPts  = data.filter(d =>  String(d.label).includes('Proj'));
   const spanText = realPts.length ? `${realPts[0].label} – ${realPts[realPts.length - 1].label}` : null;
+
+  const pageTitle = OWID_CONFIG[id || '4']?.title || metadata.title || 'Dataset View';
+  const configDesc = OWID_CONFIG[id || '4']?.description || metadata.description;
+  const configDetail = OWID_CONFIG[id || '4']?.detail || metadata.detail;
+  
+  const pageDescription = configDesc 
+    ? `${configDesc} (${configDetail || 'Raw Data'})`
+    : 'Historical data tracking.';
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 pb-20">
@@ -298,8 +392,12 @@ export default function DatasetView() {
           </Link>
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-5">
             <div>
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-1.5">{metadata.title || '—'}</h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">{metadata.description} {metadata.unit && <span className="ml-1 text-slate-600 dark:text-slate-300 font-medium">· {metadata.unit.trim()}</span>}</p>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white mb-2 leading-tight">
+                {pageTitle}
+              </h1>
+              <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                {pageDescription}
+              </p>
             </div>
             {!loading && data.length > 0 && (
               <div className="flex items-center gap-2 shrink-0 flex-wrap">
@@ -318,10 +416,15 @@ export default function DatasetView() {
                 <span className="flex items-center gap-1.5"><span className="w-6 border-t-2 border-slate-300 dark:border-slate-600 inline-block" />Historical</span>
                 <span className="flex items-center gap-1.5"><span className="w-6 border-t-2 border-dashed border-amber-400 inline-block" />Projected</span>
               </div>
+
+              <div className="flex items-center gap-3">
+                <ExportButton data={activeData} fileName={metadata.title || 'Dataset'} />
+
               <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
                 {[['all', 'All time'], ['recent', 'Last 20 yrs']].map(([key, label]) => (
                   <button key={key} onClick={() => setTimeFilter(key)} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${timeFilter === key ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}>{label}</button>
                 ))}
+              </div>
               </div>
             </div>
           )}
